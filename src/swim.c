@@ -34,10 +34,70 @@ void _swim_uv_send_cb(uv_udp_send_t* req, int status) {
   free(req);
 }
 
+swim_node_metadata_t* swim_node_metadata_create() {
+  swim_node_metadata_t* meta = (swim_node_metadata_t*)malloc(sizeof(swim_node_metadata_t));
+  meta->num_shards = 0;
+  meta->shards = NULL;
+  return meta;
+}
 
-swim_node_t* swim_node_create(sds node_id, sds host, uint16_t port) {
+void swim_node_metadata_destroy(swim_node_metadata_t* meta) {
+  if (meta->num_shards && meta->shards) {
+    free((void*)meta->shards);
+  }
+
+  if (meta->datacenter) {
+    sdsfree(meta->datacenter);
+  }
+
+  if (meta->rack) {
+    sdsfree(meta->rack);
+  }
+
+  free((void*)meta);
+}
+
+void swim_node_metadata_pack(swim_node_metadata_t* meta, mpack_writer_t* writer) {
+  mpack_write_u8(writer, (uint8_t)meta->type);
+
+  mpack_start_array(writer, meta->num_shards);
+  for (size_t i = 0; i < meta->num_shards; i++) {
+    mpack_write_u64(writer, meta->shards[i]);
+  }
+  mpack_finish_array(writer);
+
+  mpack_write_cstr(writer, meta->datacenter);
+  mpack_write_cstr(writer, meta->rack);
+}
+
+void swim_node_metadata_unpack(swim_node_metadata_t* meta, mpack_reader_t* reader) {
+  meta->type = mpack_expect_u8(reader);
+  meta->num_shards = mpack_expect_array(reader);
+  assert(meta->shards == NULL);
+  meta->shards = malloc(sizeof(uint64_t) * meta->num_shards);
+
+  for (size_t i = 0; i < meta->num_shards; i++) {
+    meta->shards[i] = mpack_expect_u64(reader);
+  }
+  mpack_done_array(reader);
+
+  char* datacenter = mpack_expect_cstr_alloc(reader, 4096);
+  mpack_done_str(&reader);
+  char* rack = mpack_expect_cstr_alloc(reader, 4096);
+  mpack_done_str(&reader);
+
+  meta->datacenter = sdsnew(datacenter);
+  meta->rack = sdsnew(rack);
+
+  free(datacenter);
+  free(rack);
+}
+
+swim_node_t* swim_node_create(sds node_id, sds host, uint16_t port, swim_node_metadata_t* meta) {
   swim_node_t* node = (swim_node_t*)malloc(sizeof(swim_node_t));
   assert(node);
+
+  node->metadata = meta;
 
   if (node_id) {
     node->node_id = sdsdup(node_id);
@@ -45,7 +105,7 @@ swim_node_t* swim_node_create(sds node_id, sds host, uint16_t port) {
 
   node->host = sdsdup(host);
   node->port = port;
-  node->status = SWIM_NODE_UNKNOWN;
+  node->status = SWIM_NODE_STATUS_UNKNOWN;
 
   return node;
 }
@@ -53,6 +113,11 @@ swim_node_t* swim_node_create(sds node_id, sds host, uint16_t port) {
 void swim_node_destroy(swim_node_t* node) {
   sdsfree(node->node_id);
   sdsfree(node->host);
+
+  if (node->metadata) {
+    swim_node_metadata_destroy(node->metadata);
+  }
+
   free((void *)node);
 }
 
@@ -127,6 +192,7 @@ void swim_state_send_hello(swim_state_t* state, swim_node_t* other) {
   mpack_write_cstr(&writer, state->self->node_id);
   mpack_write_cstr(&writer, state->self->host);
   mpack_write_u16(&writer, state->self->port);
+  swim_node_metadata_pack(state->self->metadata, &writer);
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
 
@@ -172,15 +238,24 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf) {
       swim_node_t* node = swim_node_create(
         sdsnew(host),
         sdsnew(node_id),
-        mpack_expect_u16(&reader)
+        mpack_expect_u16(&reader),
+        swim_node_metadata_create()
       );
+
+      swim_node_metadata_unpack(node->metadata, &reader);
+
+      printf("[%s] got OP_HELLO from node %s (%s / %s)\n",
+          state->self->node_id,
+          node->node_id,
+          node->metadata->datacenter,
+          node->metadata->rack);
 
       // Cleanup msgpack strings
       free(host);
       free(node_id);
 
       // Add the node to our swim
-      node->status = SWIM_NODE_UNKNOWN;
+      node->status = SWIM_NODE_STATUS_UNKNOWN;
       swim_state_add_node(state, node);
 
       // Send state to the node

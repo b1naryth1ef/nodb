@@ -28,7 +28,7 @@ void* node_thread(void* data) {
 
   swim_node_t* seed;
   for (size_t i = 0; i < args->num_seeds; i++) {
-    seed = swim_node_create(NULL, args->seed_hosts[i], args->seed_ports[i]);
+    seed = swim_node_create(NULL, args->seed_hosts[i], args->seed_ports[i], NULL);
     swim_state_seed_node(state, seed);
   }
 
@@ -39,7 +39,7 @@ void* node_thread(void* data) {
   printf("Exiting node %s\n", node->node_id);
 }
 
-int main(int argc, char* argv) {
+int main(int argc, char** argv) {
   size_t num_threads = 6;
 
 
@@ -49,12 +49,20 @@ int main(int argc, char* argv) {
 
   node_thread_args_t* args;
   for (int i = 0; i < num_threads; i++) {
+    swim_node_metadata_t* meta = swim_node_metadata_create();
+    meta->type = SWIM_NODE_TYPE_MEMBER;
+    meta->num_shards = 1;
+    meta->shards = malloc(sizeof(uint64_t) * 1);
+    meta->shards[0] = 0x01;
+    meta->datacenter = sdsnew("dc1");
+    meta->rack = sdsnew("rack1");
+
     args = malloc(sizeof(node_thread_args_t));
     args->num_seeds = 1;
     args->seed_hosts = malloc(sizeof(sds) * args->num_seeds);
     args->seed_ports = malloc(sizeof(uint16_t) * args->num_seeds);
     sz = snprintf(buf, 256, "node-%d", i + 1);
-    args->node = swim_node_create(sdsnewlen(buf, sz), sdsnew("localhost"), 12001 + i);
+    args->node = swim_node_create(sdsnewlen(buf, sz), sdsnew("localhost"), 12001 + i, meta);
     args->num_seeds = 1;
     args->seed_hosts[0] = sdsnew("localhost");
     args->seed_ports[0] = 12002 + i;

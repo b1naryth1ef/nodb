@@ -55,6 +55,11 @@ typedef struct swim_node_metadata_s {
   sds rack;
 } swim_node_metadata_t;
 
+swim_node_metadata_t* swim_node_metadata_create();
+void swim_node_metadata_destroy(swim_node_metadata_t*);
+void swim_node_metadata_pack(swim_node_metadata_t*, mpack_writer_t*);
+void swim_node_metadata_unpack(swim_node_metadata_t*, mpack_reader_t*);
+
 /**
   Represents a single SWIM node within our ring. This contains state and information
   about our perspective of the node, as well as the metadata and information that
@@ -68,14 +73,14 @@ typedef struct swim_node_s {
   sds host;
   uint16_t port;
 
-  // TODO: metadata
-  // hashmap?
+  // Metadata for this node
+  swim_node_metadata_t* metadata;
 
   // The node status
   swim_node_status_t status;
 } swim_node_t;
 
-swim_node_t* swim_node_create(sds, sds, uint16_t);
+swim_node_t* swim_node_create(sds, sds, uint16_t, swim_node_metadata_t*);
 void swim_node_destroy(swim_node_t*);
 
 /**
