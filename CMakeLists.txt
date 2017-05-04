@@ -9,9 +9,16 @@ include_directories(src/include/)
 FILE(GLOB_RECURSE CORE_SOURCES src/*.c)
 
 # Include Deps
-FILE(GLOB_RECURSE DEP_SOURCES deps/sds/*.c deps/mpack/src/*.c)
+FILE(GLOB_RECURSE DEP_SOURCES
+	deps/sds/*.c
+	deps/mpack/src/*.c
+	deps/farmhash/src/farmhash.cc
+	deps/hashmap/src/*.c
+)
 include_directories(deps/)
 include_directories(deps/mpack/src)
+include_directories(deps/farmhash/src)
+include_directories(deps/hashmap/src)
 
 message(STATUS "${CORE_SOURCES} / ${DEP_SOURCES} / ${DEP_HEADERS}")
 add_executable(nodb ${CORE_SOURCES} ${DEP_SOURCES})

@@ -13,13 +13,13 @@
 typedef enum {
   // The node is in an unknown state, generally this means we just added the node
   //  and are waiting to ping-verify it.
-  SWIM_NODE_UNKNOWN,
+  SWIM_NODE_STATUS_UNKNOWN,
   // The node is in an OK state
-  SWIM_NODE_OK,
+  SWIM_NODE_STATUS_OK,
   // The node is in a BAD state, which means it has failed ping checks
-  SWIM_NODE_BAD,
+  SWIM_NODE_STATUS_BAD,
   // The node is in a RECOVERING state, coming back from BAD
-  SWIM_NODE_RECOVERING,
+  SWIM_NODE_STATUS_RECOVERING,
 } swim_node_status_t;
 
 typedef enum {
@@ -37,6 +37,24 @@ typedef enum {
   SWIM_OP_PONG = 0x05,
 } swim_opcode_t;
 
+typedef enum {
+	SWIM_NODE_TYPE_MEMBER,
+	SWIM_NODE_TYPE_LISTENER,
+} swim_node_type_t;
+
+typedef struct swim_node_metadata_s {
+  // The nodes type
+	swim_node_type_t type;
+
+  // Information on what shards this node subscribes too
+  size_t num_shards;
+  uint64_t* shards;
+
+  // Location information
+  sds datacenter;
+  sds rack;
+} swim_node_metadata_t;
+
 /**
   Represents a single SWIM node within our ring. This contains state and information
   about our perspective of the node, as well as the metadata and information that
@@ -49,6 +67,9 @@ typedef struct swim_node_s {
   // The node host and port
   sds host;
   uint16_t port;
+
+  // TODO: metadata
+  // hashmap?
 
   // The node status
   swim_node_status_t status;

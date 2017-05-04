@@ -4,3 +4,9 @@
 [submodule "deps/mpack"]
 	path = deps/mpack
 	url = git@github.com:ludocode/mpack.git
+[submodule "deps/farmhash"]
+	path = deps/farmhash
+	url = git@github.com:google/farmhash.git
+[submodule "deps/hashmap"]
+	path = deps/hashmap
+	url = git@github.com:DavidLeeds/hashmap.git

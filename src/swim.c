@@ -196,6 +196,4 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf) {
         mpack_error_to_string(error),
         (int)remaining);
   }
-
-  // assert(mpack_reader_destroy(&reader) == mpack_ok);
 }
