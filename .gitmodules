@@ -1,0 +1,6 @@
+[submodule "deps/sds"]
+	path = deps/sds
+	url = git@github.com:antirez/sds.git
+[submodule "deps/mpack"]
+	path = deps/mpack
+	url = git@github.com:ludocode/mpack.git
