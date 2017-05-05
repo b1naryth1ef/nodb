@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
     args->seed_ports[0] = 12001;
 
     pthread_create(&thread[i], NULL, &node_thread, (void*)args);
-    sleep(2);
+    sleep(10);
   }
 
   for (int i = 0; i < num_threads; i++) {

@@ -5,7 +5,7 @@
 #include "swim.h"
 
 #define PING_TIMEOUT 1500
-#define PING_LOOP_FREQ 1000
+#define PING_LOOP_FREQ 5000
 #define GOSSIP_COUNT 3
 
 static void _swim_uv_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
@@ -30,11 +30,12 @@ static void _swim_uv_read_cb(uv_udp_t* handle, ssize_t nread, const uv_buf_t* bu
 
   uint16_t port = ntohs(((struct sockaddr_in*)addr)->sin_port);
 
+  /**
   printf("[%s] read %d bytes (%02X %02X %02X)\n",
       state->self->node_id,
       nread,
       buf->base[0], buf->base[1], buf->base[2]);
-  // printf("[%s] read data from %s:%d\n", state->self->node_id, sender, port);
+  */
   swim_state_handle(state, buf, nread);
   free(buf->base);
 }
@@ -191,7 +192,7 @@ swim_state_t* swim_state_create(uv_loop_t* loop, swim_node_t* self, sds host, ui
   // Setup the PING loop which pings nodes
   uv_timer_init(state->loop, &state->ping_loop);
   state->ping_loop.data = (void*)state;
-  uv_timer_start(&state->ping_loop, &swim_state_ping_loop_callback, PING_LOOP_FREQ, PING_LOOP_FREQ);
+  uv_timer_start(&state->ping_loop, &swim_state_ping_loop_callback, PING_LOOP_FREQ * 5, PING_LOOP_FREQ);
 
   return state;
 }
@@ -244,11 +245,13 @@ swim_node_t* swim_state_get_random_node(swim_state_t* state) {
 }
 
 void swim_state_send(swim_state_t* state, swim_node_t* other, uv_buf_t* buf) {
+  /**
   printf("[%s] sending %d bytes to %s (%02X %02X %02X)\n",
       state->self->node_id,
       buf->len,
       other->host,
       buf->base[0], buf->base[1], buf->base[2]);
+  */
 
   uv_udp_send_t* send_req = malloc(sizeof(uv_udp_send_t));
   struct sockaddr_in send_addr;
@@ -291,25 +294,21 @@ void swim_state_send_state(swim_state_t* state, swim_node_t* other) {
 void swim_state_send_node_update(swim_state_t* state, swim_node_t* other, swim_node_t* node) {
   SWIM_STATE_PACKET(state->self, SWIM_OP_NODE_UPDATE);
 
-  // mpack_write_u64(&writer, swim_node_hash(node));
-  // swim_node_pack(node, &writer);
+  mpack_write_u64(&writer, swim_node_hash(node));
+  swim_node_pack(node, &writer);
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
-  printf("[%s] sending node update for %s to %s (%d)\n",
-      state->self->node_id,
-      node->node_id,
-      other->node_id,
-      buf.len);
-
-  mpack_reader_t reader;
-  mpack_reader_init_data(&reader, buf.base, buf.len);
-
   swim_state_send(state, other, &buf);
 }
 
 void swim_state_send_ping(swim_state_t* state, swim_node_t* other, int64_t salt) {
   SWIM_STATE_PACKET(state->self, SWIM_OP_PING);
   mpack_write_i64(&writer, salt);
+
+  printf("[%s] requesting ping from %s (%lld)\n",
+      state->self->node_id,
+      other->node_id,
+      salt);
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   swim_state_send(state, other, &buf);
@@ -328,6 +327,9 @@ bool _remote_node_finder(void* ctx, void* node) {
 }
 
 bool _swim_state_ping_req_finder(void* ctx, void* req) {
+  printf("zzzz %lld != %lld\n",
+      *(int64_t*)ctx,
+      ((swim_state_ping_req_t*)req)->salt);
   return *(int64_t*)ctx == ((swim_state_ping_req_t*)req)->salt;
 }
 
@@ -338,14 +340,14 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
 
   mpack_tag_t tag;
 
-  // Read the opcode
+  // Read the OP-Code
   tag = mpack_peek_tag(&reader);
-  // assert(tag.type == mpack_type_uint);
+  assert(tag.type == mpack_type_uint);
   swim_opcode_t op = (swim_opcode_t)mpack_expect_u8(&reader);
 
-  // Read the node id from the header
+  // Read the remote node ID
   tag = mpack_peek_tag(&reader);
-  // assert(tag.type == mpack_type_str);
+  assert(tag.type == mpack_type_str);
   char* _node_id = mpack_expect_cstr_alloc(&reader, 4096);
   sds node_id = sdsnew(_node_id);
   mpack_done_str(&reader);
@@ -355,6 +357,8 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
     printf("[%s] ERROR: (%s) bad op in %d bytes\n", state->self->node_id, node_id, nread);
     goto cleanup;
   }
+
+  printf("[%s] Processing OP %d\n", state->self->node_id, op);
 
   switch (op) {
     // If we recieve an OP HELLO, add the remote node to our ring (in unknown),
@@ -444,6 +448,11 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
     }
     case SWIM_OP_PONG: {
       int64_t salt = mpack_expect_i64(&reader);
+
+      for (size_t idx = 0; idx < state->ping_reqs->length; idx++) {
+        printf("  [%d] %lld\n", idx, ((swim_state_ping_req_t*)array_index(state->ping_reqs, idx))->salt);
+      }
+
       swim_state_ping_req_t* req = (swim_state_ping_req_t*)array_search(
         state->ping_reqs,
         &_swim_state_ping_req_finder,
@@ -467,7 +476,6 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
       break;
     }
     case SWIM_OP_NODE_UPDATE: {
-      break;
       uint64_t hash = mpack_expect_u64(&reader);
       swim_node_t* node = swim_node_create(NULL, NULL, 0);
       swim_node_unpack(node, &reader);
@@ -481,7 +489,7 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
 
       // TODO: random propagate
       if (current == NULL) {
-        printf("[%s] got new node from update\n", state->self->node_id);
+        printf("[%s] got new node (%s) from update\n", state->self->node_id, node->node_id);
         swim_state_add_node(state, node);
         prop = true;
       } else if (strcmp(state->self->node_id, node->node_id) == 0) {
