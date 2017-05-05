@@ -11,7 +11,7 @@ array_t* array_create() {
 }
 
 void array_destroy(array_t* array) {
-  for (size_t i = 0; i++; i < array->length) {
+  for (size_t i = 0; i < array->length; i++) {
     array_member_destroy(array_pop(array, i));
   }
 
@@ -54,11 +54,9 @@ void array_append(array_t* array, void* data) {
 array_member_t* array_index_m(array_t* array, size_t idx) {
   array_member_t* member = array->head;
 
-  for (idx; idx > 0; idx--) {
+  while (idx) {
+    idx--;
     member = member->next;
-    if (member == NULL) {
-      return NULL;
-    }
   }
 
   return member;
@@ -104,4 +102,22 @@ size_t array_find(array_t* array, void* data) {
     }
     idx++;
   }
+}
+
+void* array_search(array_t* array, array_search_f func, void* ctx) {
+  array_member_t* member = array->head;
+
+  while (true) {
+    if (!member) {
+      break;
+    }
+
+    if (func(ctx, member->data)) {
+      return member->data;
+    }
+
+    member = member->next;
+  }
+
+  return NULL;
 }

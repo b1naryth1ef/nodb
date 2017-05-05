@@ -23,12 +23,15 @@ typedef struct array_s {
 array_t* array_create();
 void array_destroy(array_t*);
 
+typedef bool (*array_search_f)(void*, void*);
+
 // Array Operations
 void array_prepend(array_t*, void*);
 void array_append(array_t*, void*);
 array_member_t* array_index_m(array_t*, size_t);
 void* array_index(array_t*, size_t);
 void* array_pop(array_t*, size_t);
+void* array_search(array_t*, array_search_f, void*);
 size_t array_find(array_t*, void*);
 
 // Array Member Setup
