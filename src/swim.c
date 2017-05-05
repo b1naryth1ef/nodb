@@ -30,8 +30,13 @@ static void _swim_uv_read_cb(uv_udp_t* handle, ssize_t nread, const uv_buf_t* bu
 
   uint16_t port = ntohs(((struct sockaddr_in*)addr)->sin_port);
 
+  uint64_t hash = farmhash_fingerprint64(buf->base, nread);
+  printf("[%s] read %d bytes (%d)\n",
+      state->self->node_id,
+      nread,
+      hash);
   // printf("[%s] read data from %s:%d\n", state->self->node_id, sender, port);
-  swim_state_handle(state, buf);
+  swim_state_handle(state, buf, nread);
   free(buf->base);
 }
 
@@ -209,6 +214,9 @@ void swim_state_seed_node(swim_state_t* state, swim_node_t* node) {
 }
 
 void swim_state_add_node(swim_state_t* state, swim_node_t* node) {
+  printf("[%s] adding node %s\n",
+      state->self->node_id,
+      node->node_id);
   array_append(state->members, (void*)node);
 }
 
@@ -235,6 +243,12 @@ swim_node_t* swim_state_get_random_node(swim_state_t* state) {
 }
 
 void swim_state_send(swim_state_t* state, swim_node_t* other, uv_buf_t* buf) {
+  printf("[%s] sending %d bytes to %s (%d)\n",
+      state->self->node_id,
+      buf->len,
+      other->host,
+      farmhash_fingerprint64(buf->base, buf->len));
+
   uv_udp_send_t* send_req = malloc(sizeof(uv_udp_send_t));
   struct sockaddr_in send_addr;
   uv_ip4_addr(other->host, other->port, &send_addr);
@@ -277,16 +291,34 @@ void swim_state_send_state(swim_state_t* state, swim_node_t* other) {
 void swim_state_send_node_update(swim_state_t* state, swim_node_t* other, swim_node_t* node) {
   SWIM_STATE_PACKET(state->self, SWIM_OP_NODE_UPDATE);
 
-  printf("[%s] sending node update for %s to %s\n",
-      state->self->node_id,
-      node->node_id,
-      other->node_id);
-
   mpack_write_u64(&writer, swim_node_hash(node));
   swim_node_pack(node, &writer);
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
+  printf("[%s] sending node update for %s to %s (%d)\n",
+      state->self->node_id,
+      node->node_id,
+      other->node_id,
+      buf.len);
+
+  mpack_reader_t reader;
+  mpack_reader_init_data(&reader, buf.base, buf.len);
+
+  mpack_tag_t tag;
+  tag = mpack_peek_tag(&reader);
+  assert(tag.type == mpack_type_uint);
+  swim_opcode_t op = (swim_opcode_t)mpack_expect_u8(&reader);
+  tag = mpack_peek_tag(&reader);
+  assert(tag.type == mpack_type_str);
+  char* _node_id = mpack_expect_cstr_alloc(&reader, 4096);
+  sds node_id = sdsnew(_node_id);
+  mpack_done_str(&reader);
+  free(_node_id);
+  printf("all is well %d / %s\n", op, node_id);
+
   swim_state_send(state, other, &buf);
+
+
   free(buf.base);
 }
 
@@ -316,23 +348,31 @@ bool _swim_state_ping_req_finder(void* ctx, void* req) {
   return *(int64_t*)ctx == ((swim_state_ping_req_t*)req)->salt;
 }
 
-void swim_state_handle(swim_state_t* state, const uv_buf_t* buf) {
+void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) {
   // First item in every payload should be our opcode
   mpack_reader_t reader;
-  mpack_reader_init_data(&reader, buf->base, buf->len);
+  mpack_reader_init_data(&reader, buf->base, nread);
+
+  mpack_tag_t tag;
+
+  // Read the opcode
+  tag = mpack_peek_tag(&reader);
+  // assert(tag.type == mpack_type_uint);
+  swim_opcode_t op = (swim_opcode_t)mpack_expect_u8(&reader);
 
   // Read the node id from the header
+  tag = mpack_peek_tag(&reader);
+  // assert(tag.type == mpack_type_str);
   char* _node_id = mpack_expect_cstr_alloc(&reader, 4096);
   sds node_id = sdsnew(_node_id);
   mpack_done_str(&reader);
   free(_node_id);
 
-  // Read the opcode
-  swim_opcode_t op = (swim_opcode_t)mpack_expect_u8(&reader);
-
   if (op == 0x00) {
-    printf("[%s] ERROR: (%s) bad op in %d bytes\n", state->self->node_id, node_id, buf->len);
+    printf("[%s] ERROR: (%s) bad op in %d bytes\n", state->self->node_id, node_id, nread);
     goto cleanup;
+  } else {
+    printf("[%s] read %d bytes\n", state->self->node_id, nread);
   }
 
   switch (op) {

@@ -145,8 +145,8 @@ typedef struct swim_state_ping_req_s {
   uv_buf_t buf; \
   mpack_writer_t writer; \
   mpack_writer_init_growable(&writer, &buf.base, &buf.len); \
+  mpack_write_u8(&writer, (uint8_t)opcode); \
   mpack_write_cstr(&writer, node->node_id); \
-  mpack_write_u8(&writer, (uint8_t)opcode);
 
 void swim_state_send(swim_state_t*, swim_node_t*, uv_buf_t*);
 void swim_state_send_hello(swim_state_t*, swim_node_t*);
@@ -156,4 +156,4 @@ void swim_state_send_ping(swim_state_t*, swim_node_t*, int64_t);
 void swim_state_send_ping_req(swim_state_t*, swim_node_t*);
 void swim_state_send_pong(swim_state_t*, swim_node_t*, int64_t);
 
-void swim_state_handle(swim_state_t*, const uv_buf_t*);
+void swim_state_handle(swim_state_t*, const uv_buf_t*, ssize_t);
