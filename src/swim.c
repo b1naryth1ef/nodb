@@ -191,7 +191,7 @@ swim_state_t* swim_state_create(uv_loop_t* loop, swim_node_t* self, sds host, ui
   // Setup the PING loop which pings nodes
   uv_timer_init(state->loop, &state->ping_loop);
   state->ping_loop.data = (void*)state;
-  // uv_timer_start(&state->ping_loop, &swim_state_ping_loop_callback, PING_LOOP_FREQ, PING_LOOP_FREQ);
+  uv_timer_start(&state->ping_loop, &swim_state_ping_loop_callback, PING_LOOP_FREQ, PING_LOOP_FREQ);
 
   return state;
 }
@@ -228,8 +228,10 @@ void swim_state_remove_node(swim_state_t* state, swim_node_t* node) {
 void swim_state_update_node(swim_state_t* state, swim_node_t* node) {
   // TODO: make this random
   swim_node_t* other;
+
   for (size_t num = 0; num < state->members->length; num++) {
     other = array_index(state->members, (size_t)num);
+
     if (strcmp(other->node_id, state->self->node_id) != 0) {
       swim_state_send_node_update(state, other, node);
     }
@@ -251,6 +253,7 @@ void swim_state_send(swim_state_t* state, swim_node_t* other, uv_buf_t* buf) {
   uv_udp_send_t* send_req = malloc(sizeof(uv_udp_send_t));
   struct sockaddr_in send_addr;
   uv_ip4_addr(other->host, other->port, &send_addr);
+
   uv_udp_send(
     send_req,
     &state->send_socket,
@@ -269,7 +272,6 @@ void swim_state_send_hello(swim_state_t* state, swim_node_t* other) {
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   swim_state_send(state, other, &buf);
-  free(buf.base);
 }
 
 void swim_state_send_state(swim_state_t* state, swim_node_t* other) {
@@ -284,14 +286,13 @@ void swim_state_send_state(swim_state_t* state, swim_node_t* other) {
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   swim_state_send(state, other, &buf);
-  free(buf.base);
 }
 
 void swim_state_send_node_update(swim_state_t* state, swim_node_t* other, swim_node_t* node) {
   SWIM_STATE_PACKET(state->self, SWIM_OP_NODE_UPDATE);
 
-  mpack_write_u64(&writer, swim_node_hash(node));
-  swim_node_pack(node, &writer);
+  // mpack_write_u64(&writer, swim_node_hash(node));
+  // swim_node_pack(node, &writer);
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   printf("[%s] sending node update for %s to %s (%d)\n",
@@ -304,7 +305,6 @@ void swim_state_send_node_update(swim_state_t* state, swim_node_t* other, swim_n
   mpack_reader_init_data(&reader, buf.base, buf.len);
 
   swim_state_send(state, other, &buf);
-  free(buf.base);
 }
 
 void swim_state_send_ping(swim_state_t* state, swim_node_t* other, int64_t salt) {
@@ -313,7 +313,6 @@ void swim_state_send_ping(swim_state_t* state, swim_node_t* other, int64_t salt)
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   swim_state_send(state, other, &buf);
-  free(buf.base);
 }
 
 void swim_state_send_pong(swim_state_t* state, swim_node_t* other, int64_t salt) {
@@ -322,7 +321,6 @@ void swim_state_send_pong(swim_state_t* state, swim_node_t* other, int64_t salt)
 
   assert(mpack_writer_destroy(&writer) == mpack_ok);
   swim_state_send(state, other, &buf);
-  free(buf.base);
 }
 
 bool _remote_node_finder(void* ctx, void* node) {
@@ -406,8 +404,9 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
     case SWIM_OP_STATE: {
       size_t nodes = mpack_expect_array(&reader);
 
+      swim_node_t* node;
       for (size_t i = 0; i < nodes; i++) {
-        swim_node_t* node = swim_node_create(NULL, NULL, 0);
+        node = swim_node_create(NULL, NULL, 0);
         swim_node_unpack(node, &reader);
 
         if (strcmp(node->node_id, state->self->node_id) == 0) {
@@ -468,6 +467,7 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
       break;
     }
     case SWIM_OP_NODE_UPDATE: {
+      break;
       uint64_t hash = mpack_expect_u64(&reader);
       swim_node_t* node = swim_node_create(NULL, NULL, 0);
       swim_node_unpack(node, &reader);
@@ -510,7 +510,6 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
           swim_state_update_node(state, node);
       }
 
-      free(node);
       break;
     }
     default: {

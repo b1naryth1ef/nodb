@@ -7,3 +7,6 @@
 [submodule "deps/farmhash-c"]
 	path = deps/farmhash-c
 	url = git@github.com:uxcn/farmhash-c.git
+[submodule "deps/hashmap_c"]
+	path = deps/hashmap_c
+	url = git@github.com:petewarden/c_hashmap.git
