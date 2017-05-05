@@ -1,7 +1,7 @@
 project(nodb)
 cmake_minimum_required (VERSION 3.2)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 
 # Build Debug w/ symbols
 set(CMAKE_BUILD_TYPE Debug)
