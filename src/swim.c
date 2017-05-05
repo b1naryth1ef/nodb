@@ -30,11 +30,10 @@ static void _swim_uv_read_cb(uv_udp_t* handle, ssize_t nread, const uv_buf_t* bu
 
   uint16_t port = ntohs(((struct sockaddr_in*)addr)->sin_port);
 
-  uint64_t hash = farmhash_fingerprint64(buf->base, nread);
-  printf("[%s] read %d bytes (%d)\n",
+  printf("[%s] read %d bytes (%02X %02X %02X)\n",
       state->self->node_id,
       nread,
-      hash);
+      buf->base[0], buf->base[1], buf->base[2]);
   // printf("[%s] read data from %s:%d\n", state->self->node_id, sender, port);
   swim_state_handle(state, buf, nread);
   free(buf->base);
@@ -243,11 +242,11 @@ swim_node_t* swim_state_get_random_node(swim_state_t* state) {
 }
 
 void swim_state_send(swim_state_t* state, swim_node_t* other, uv_buf_t* buf) {
-  printf("[%s] sending %d bytes to %s (%d)\n",
+  printf("[%s] sending %d bytes to %s (%02X %02X %02X)\n",
       state->self->node_id,
       buf->len,
       other->host,
-      farmhash_fingerprint64(buf->base, buf->len));
+      buf->base[0], buf->base[1], buf->base[2]);
 
   uv_udp_send_t* send_req = malloc(sizeof(uv_udp_send_t));
   struct sockaddr_in send_addr;
@@ -304,21 +303,7 @@ void swim_state_send_node_update(swim_state_t* state, swim_node_t* other, swim_n
   mpack_reader_t reader;
   mpack_reader_init_data(&reader, buf.base, buf.len);
 
-  mpack_tag_t tag;
-  tag = mpack_peek_tag(&reader);
-  assert(tag.type == mpack_type_uint);
-  swim_opcode_t op = (swim_opcode_t)mpack_expect_u8(&reader);
-  tag = mpack_peek_tag(&reader);
-  assert(tag.type == mpack_type_str);
-  char* _node_id = mpack_expect_cstr_alloc(&reader, 4096);
-  sds node_id = sdsnew(_node_id);
-  mpack_done_str(&reader);
-  free(_node_id);
-  printf("all is well %d / %s\n", op, node_id);
-
   swim_state_send(state, other, &buf);
-
-
   free(buf.base);
 }
 
@@ -371,8 +356,6 @@ void swim_state_handle(swim_state_t* state, const uv_buf_t* buf, ssize_t nread) 
   if (op == 0x00) {
     printf("[%s] ERROR: (%s) bad op in %d bytes\n", state->self->node_id, node_id, nread);
     goto cleanup;
-  } else {
-    printf("[%s] read %d bytes\n", state->self->node_id, nread);
   }
 
   switch (op) {

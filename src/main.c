@@ -42,7 +42,7 @@ void* node_thread(void* data) {
 }
 
 int main(int argc, char** argv) {
-  size_t num_threads = 5;
+  size_t num_threads = 3;
 
   char buf[256];
   size_t sz;
